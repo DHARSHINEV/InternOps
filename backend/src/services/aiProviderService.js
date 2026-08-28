@@ -540,15 +540,15 @@ async function generateAIResponse({ userId, messages }) {
 
       errors.push({
         provider: providerName,
-        code: error.code || 'AI_PROVIDER_ERROR',
-        statusCode: error.statusCode || null,
         reason: error.message,
       });
     }
   }
 
   console.error('[AI] All configured providers are unavailable', { errors });
-  return createFallbackResponse(errors);
+  const error = new Error('All AI providers unavailable');
+  error.details = errors;
+  throw error;
 }
 
 function getProviderHealth() {
