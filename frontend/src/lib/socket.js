@@ -18,7 +18,6 @@ export function connectSocket(token) {
 
   socket = io(apiUrl, {
     auth: { token },
-    query: { token },
     withCredentials: true,
     autoConnect: true,
   });
