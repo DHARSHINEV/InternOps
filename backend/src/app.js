@@ -417,11 +417,8 @@ app.setErrorHandler((error, request, reply) => {
       },
       'Validation error'
     );
-
     const validationDetails = normalizeValidationDetails(error.validation);
-
     const payload = validationPayload(validationDetails, request.id);
-
     return reply.status(400).send(payload);
   }
 
@@ -440,11 +437,8 @@ app.setErrorHandler((error, request, reply) => {
       },
       'Zod validation error'
     );
-
     const validationDetails = normalizeValidationDetails(error.issues || []);
-
     const payload = validationPayload(validationDetails, request.id);
-
     return reply.status(400).send(payload);
   }
 
