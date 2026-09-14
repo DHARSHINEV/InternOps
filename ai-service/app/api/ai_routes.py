@@ -52,20 +52,14 @@ MAX_TOTAL_CHARS = 32000
 
 
 async def call_provider(user_id: str, messages: List[dict]) -> ProviderResult:
-    content, used_provider = await ai_orchestrator.generate_chat_with_fallback(
-    # Caching lives entirely in the orchestrator (app/providers/orchestrator.py:
-    # cache_key()/_execute_with_failover(), backed by app/core/cache.py) so
-    # /ai/chat, /generate, and /ai/generate-image all share one cache-key
-    # format, TTL, and invalidation path instead of each keeping their own
-    # (see #1894 — this used to also cache here via get_or_set(), producing
-    # a second, inconsistent Redis entry for the same logical request).
-    content, used_provider, cached = await ai_orchestrator.generate_chat_with_cache_s
-        messages
+    # Caching lives entirely in the orchestrator so all AI routes
+    # share the same cache-key format, TTL, and invalidation path.
+    content, used_provider, cached = (
+        await ai_orchestrator.generate_chat_with_cache_status(messages)
     )
 
     return ProviderResult(
         provider=used_provider,
-     cached=False,
         cached=cached,
         content=content,
     )
