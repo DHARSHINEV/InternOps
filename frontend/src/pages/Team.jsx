@@ -463,6 +463,7 @@ function AddMemberModal({ onClose }) {
               <Field label="Email *">
                 <input
                   type="email"
+                  maxLength={254}
                   required
                   className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white p-3 w-full rounded-2xl focus:ring-2 focus:ring-indigo-400/50 outline-none"
                   value={form.email}
@@ -474,6 +475,7 @@ function AddMemberModal({ onClose }) {
                 <div className="relative">
                   <input
                     type={showPass ? 'text' : 'password'}
+                    maxLength={128}
                     required
                     minLength={8}
                     className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white p-3 w-full rounded-2xl pr-12 focus:ring-2 focus:ring-indigo-400/50 outline-none"
