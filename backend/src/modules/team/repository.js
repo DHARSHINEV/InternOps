@@ -5,7 +5,7 @@ const argon2 = require('argon2');
 const MEMBER_COLUMNS = `
   u.id, u.email, u.role, u.full_name, u.suspended, u.avatar_url, u.created_at,
   u.department_id, u.manager_id, u.phone, u.college, u.course, u.year_of_study,
-  u.position, u.joining_date, u.internship_status, u.location, u.notes
+  u.position, u.internship_domain, u.joining_date, u.internship_status, u.location, u.notes
 `;
 
 // Performance summary (attendance %, avg rating, verified tasks) joined per member.
@@ -85,6 +85,7 @@ const EDITABLE_FIELDS = [
   'course',
   'year_of_study',
   'position',
+  'internship_domain',
   'joining_date',
   'internship_status',
   'location',
@@ -117,8 +118,8 @@ async function createMember(data) {
   } = await pool.query(
     `INSERT INTO users
        (email, password_hash, role, manager_id, department_id, full_name,
-        phone, college, course, year_of_study, position, joining_date, internship_status, location, notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        phone, college, course, year_of_study, position, internship_domain, joining_date, internship_status, location, notes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
      RETURNING id`,
     [
       data.email,
@@ -132,6 +133,7 @@ async function createMember(data) {
       data.course || null,
       data.year_of_study || null,
       data.position || null,
+      data.internship_domain || null,
       data.joining_date || null,
       data.internship_status || 'ACTIVE',
       data.location || null,

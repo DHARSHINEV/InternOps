@@ -181,6 +181,7 @@ const EDIT_FIELDS = [
   { key: 'course', label: 'Course' },
   { key: 'year_of_study', label: 'Year of study' },
   { key: 'position', label: 'Position / Designation' },
+  { key: 'internship_domain', label: 'Internship domain' },
   { key: 'joining_date', label: 'Joining date', type: 'date' },
   { key: 'internship_status', label: 'Status', type: 'select' },
   { key: 'notes', label: 'Notes', type: 'textarea' },
@@ -251,6 +252,7 @@ function AddMemberModal({ onClose }) {
     course: '',
     year_of_study: '',
     position: '',
+    internship_domain: '',
     joining_date: '',
     location: '',
   });
@@ -458,6 +460,16 @@ function AddMemberModal({ onClose }) {
                   value={form.position}
                   onChange={(e) =>
                     setForm({ ...form, position: e.target.value })
+                  }
+                />
+              </Field>
+
+              <Field label="Internship domain">
+                <input
+                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white p-3 w-full rounded-2xl focus:ring-2 focus:ring-indigo-400/50 outline-none"
+                  value={form.internship_domain}
+                  onChange={(e) =>
+                    setForm({ ...form, internship_domain: e.target.value })
                   }
                 />
               </Field>
@@ -674,6 +686,7 @@ function MemberDetail({ memberId, onClose }) {
         course: member.course || '',
         year_of_study: member.year_of_study || '',
         position: member.position || '',
+        internship_domain: member.internship_domain || '',
         joining_date: member.joining_date
           ? String(member.joining_date).slice(0, 10)
           : '',
@@ -928,6 +941,10 @@ function MemberDetail({ memberId, onClose }) {
                       <Row label="Course" value={member.course} />
                       <Row label="Year" value={member.year_of_study} />
                       <Row label="Position" value={member.position} />
+                      <Row
+                        label="Internship domain"
+                        value={member.internship_domain}
+                      />
                       <Row
                         label="Joining date"
                         value={
