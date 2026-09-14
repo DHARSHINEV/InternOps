@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../lib/axios';
 import { Card, Btn, Input, ConfirmationModal } from './ui';
@@ -20,6 +20,11 @@ export default function BulkAttendanceForm({
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [pendingEntries, setPendingEntries] = useState(null);
+  useEffect(() => {
+    if (!propDeptId || propDeptId === departmentId) return;
+    setDepartmentId(propDeptId);
+    setSelectedUsers([]);
+  }, [propDeptId, departmentId]);
 
   const FILL_CONFIRM_THRESHOLD = 10;
 
@@ -42,8 +47,49 @@ export default function BulkAttendanceForm({
 
   const bulkMutation = useMutation({
     mutationFn: (data) => api.post('/attendance/bulk', data),
+    onMutate: async ({ entries = [] }) => {
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: ['departmentAttendanceSheet'] }),
+        queryClient.cancelQueries({ queryKey: ['attendance'] }),
+      ]);
+      const prev = {
+        sheets: queryClient.getQueriesData({
+          queryKey: ['departmentAttendanceSheet'],
+        }),
+        att: queryClient.getQueriesData({ queryKey: ['attendance'] }),
+      };
+      const map = new Map(
+        entries.map((e) => [`${e.user_id}_${String(e.date).slice(0, 10)}`, e])
+      );
+      const patch = (records = []) =>
+        records.map((r) => {
+          const match = map.get(`${r.user_id}_${String(r.date).slice(0, 10)}`);
+          return match
+            ? {
+                ...r,
+                status: match.status,
+                remarks: match.remarks ?? r.remarks,
+              }
+            : r;
+        });
+      prev.sheets.forEach(
+        ([k, d]) =>
+          d?.records &&
+          queryClient.setQueryData(k, { ...d, records: patch(d.records) })
+      );
+      prev.att.forEach(
+        ([k, d]) =>
+          d?.records &&
+          queryClient.setQueryData(k, { ...d, records: patch(d.records) })
+      );
+      return prev;
+    },
+    onError: (err, _vars, ctx) => {
+      ctx?.sheets?.forEach(([k, d]) => queryClient.setQueryData(k, d));
+      ctx?.att?.forEach(([k, d]) => queryClient.setQueryData(k, d));
+      setError(err.response?.data?.error || 'Bulk mark failed');
+    },
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['attendance'] });
       setError('');
       setMsg(`✓ Marked ${variables.entries.length} members`);
       setSelectedUsers([]);
@@ -51,7 +97,20 @@ export default function BulkAttendanceForm({
       setFillMissing(false);
       setTimeout(() => setMsg(''), 2500);
     },
-    onError: (err) => setError(err.response?.data?.error || 'Bulk mark failed'),
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['departmentAttendanceSheet'],
+        refetchType: 'active',
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['attendance'],
+        refetchType: 'active',
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['memberHistory'],
+        refetchType: 'active',
+      });
+    },
   });
 
   const effectiveReports = roster || reports;
@@ -69,7 +128,7 @@ export default function BulkAttendanceForm({
   const statusOptions = [
     { value: 'PRESENT', label: 'Present' },
     { value: 'ABSENT', label: 'Absent' },
-    { value: 'HALF_DAY', label: 'Half Day' },
+    { value: 'INFORMED', label: 'Informed absence' },
   ];
 
   const departmentOptions = [
