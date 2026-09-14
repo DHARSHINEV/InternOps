@@ -582,9 +582,6 @@ async function generateAIResponse({ userId, messages }) {
   }
 
   console.error('[AI] All configured providers are unavailable', { errors });
-  const error = new Error('All AI providers unavailable');
-  error.details = errors;
-  throw error;
   return createFallbackResponse(errors);
 }
 
