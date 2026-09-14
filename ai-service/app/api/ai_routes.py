@@ -35,7 +35,6 @@ from app.models.ai import (
     UsageResponse,
     GenerationRequest,
 )
-from app.core.cache import cache_key, get_or_set
 from app.providers import ai_orchestrator
 from app.providers.base import AIProviderError, ProviderAPIError, ProviderRateLimitError
 from app.providers.registry import get_configured_providers_health, get_provider
@@ -48,25 +47,15 @@ MAX_TOTAL_CHARS = 32000
 
 
 async def call_provider(user_id: str, messages: List[dict]) -> ProviderResult:
-    provider = get_provider()
-    primary_provider = provider.provider_name
-    model = provider.model_name
-    key = cache_key(primary_provider, model, messages, 0.7)
-
-    async def _compute():
-        content, used_provider = await ai_orchestrator.generate_chat_with_fallback(
-            messages
-        )
-        return {"content": content, "provider": used_provider}
-
-    res_dict, cached = await get_or_set(key, _compute)
-
-    return ProviderResult(
-        provider=res_dict["provider"],
-        cached=cached,
-        content=res_dict["content"],
+    content, used_provider = await ai_orchestrator.generate_chat_with_fallback(
+        messages
     )
 
+    return ProviderResult(
+        provider=used_provider,
+        cached=False,
+        content=content,
+    )
 
 def get_provider_health() -> list:
     return get_configured_providers_health()
