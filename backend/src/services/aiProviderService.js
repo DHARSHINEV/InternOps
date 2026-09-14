@@ -14,6 +14,9 @@ const COOLDOWN_MS = Number(
 const CACHE_TTL_MS = Number(process.env.AI_CACHE_TTL_MS || 5 * 60 * 1000);
 const CACHE_MAX_ENTRIES = Number(process.env.AI_CACHE_MAX_ENTRIES || 500);
 
+// Maximum allowed size for AI provider responses.
+// We use a 5MB default cap because some payloads (e.g. base64 image generation via FastAPI)
+// can exceed the previous 2MB limit. This protects against stream-amplification OOM attacks.
 const MAX_AI_RESPONSE_BYTES = Number(
   process.env.AI_MAX_RESPONSE_BYTES || 5 * 1024 * 1024
 );
@@ -427,6 +430,37 @@ async function callFastAPI(messages) {
   return data.content;
 }
 
+async function callFastAPIImage(prompt, authorization) {
+  const baseUrl = config.ai.fastapiUrl || 'http://localhost:8000';
+  const response = await fetchWithTimeout(`${baseUrl}/ai/generate-image`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: authorization,
+    },
+    body: JSON.stringify({ prompt }),
+  });
+
+  if (!response.ok) {
+    const err = new Error(
+      `fastapi image service failed with status ${response.status}`
+    );
+    err.statusCode = response.status;
+    throw err;
+  }
+
+  const data = await parseJsonResponseWithLimit(response, 'fastapi');
+  if (!data || !data.image_base64) {
+    throw new Error('fastapi image service returned empty response');
+  }
+
+  return data;
+}
+
+async function generateAIImage({ prompt, authorization }) {
+  return callFastAPIImage(prompt, authorization);
+}
+
 const providerRegistry = {
   fastapi: {
     key: () => config.ai.fastapiUrl || 'http://localhost:8000',
@@ -540,6 +574,8 @@ async function generateAIResponse({ userId, messages }) {
 
       errors.push({
         provider: providerName,
+        code: error.code || 'AI_PROVIDER_ERROR',
+        statusCode: error.statusCode || null,
         reason: error.message,
       });
     }
@@ -549,6 +585,7 @@ async function generateAIResponse({ userId, messages }) {
   const error = new Error('All AI providers unavailable');
   error.details = errors;
   throw error;
+  return createFallbackResponse(errors);
 }
 
 function getProviderHealth() {
@@ -572,6 +609,7 @@ function getProviderHealth() {
 
 module.exports = {
   generateAIResponse,
+  generateAIImage,
   getProviderHealth,
   ResponseSizeLimitError,
   createFallbackResponse,

@@ -4,7 +4,7 @@ AI routes — Python/FastAPI port of ai_routes.js
 Split to match ai-service/app's layout (api/ + core/ + models/ + providers/):
   - app/models/ai.py         -> request/response schemas
   - app/core/auth.py          -> get_current_user (STUB)
-  - app/core/rbac.py          -> require_roles (STUB)
+   - app/core/rbac.py          -> require_permission (STUB)
   - app/core/rate_limit.py    -> enforce_rate_limit (STUB)
   - app/core/usage.py         -> daily usage tracking (STUB)
   - app/providers/*           -> base/gemini/openai adapters
@@ -17,7 +17,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.core.auth import User, get_current_user
-from app.core.rate_limit import enforce_rate_limit
+from app.core.rate_limiter import chat_rate_limiter
 from app.core.rbac import require_permission
 from app.core.security import sanitize_prompt
 from app.core.usage import (
@@ -33,27 +33,40 @@ from app.models.ai import (
     ProviderHealthEntry,
     ProviderResult,
     UsageResponse,
-    GenerationRequest,
+    ImageGenerationRequest,
+    ImageGenerationResponse,
 )
 from app.providers import ai_orchestrator
-from app.providers.base import AIProviderError, ProviderAPIError, ProviderRateLimitError
-from app.providers.registry import get_configured_providers_health, get_provider
+from app.providers.base import(
+  AIProviderError,
+  ProviderAPIError,
+  ProviderRateLimitError,
+)
+from app.providers.registry import get_configured_providers_health
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
 MAX_MESSAGES = 32
-MAX_MESSAGE_CHARS = 4000
+MAX_MESSAGE_CHARS = 2000
 MAX_TOTAL_CHARS = 32000
 
 
 async def call_provider(user_id: str, messages: List[dict]) -> ProviderResult:
     content, used_provider = await ai_orchestrator.generate_chat_with_fallback(
+    # Caching lives entirely in the orchestrator (app/providers/orchestrator.py:
+    # cache_key()/_execute_with_failover(), backed by app/core/cache.py) so
+    # /ai/chat, /generate, and /ai/generate-image all share one cache-key
+    # format, TTL, and invalidation path instead of each keeping their own
+    # (see #1894 — this used to also cache here via get_or_set(), producing
+    # a second, inconsistent Redis entry for the same logical request).
+    content, used_provider, cached = await ai_orchestrator.generate_chat_with_cache_s
         messages
     )
 
     return ProviderResult(
         provider=used_provider,
-        cached=False,
+     cached=False,
+        cached=cached,
         content=content,
     )
 
@@ -74,7 +87,7 @@ async def chat(
     request: Request,
     body: ChatBody,
     current_user: User = Depends(get_current_user),
-    _rate_limited: None = Depends(enforce_rate_limit),
+    _rate_limited: None = Depends(chat_rate_limiter.check_rate_limit),
 ):
     # Sanitize prompt or messages
     try:
@@ -97,8 +110,11 @@ async def chat(
         # an invalid role fails FastAPI's own 422 validation before we
         # get here (equivalent to the JS 400 "Invalid message role").
         final_messages = [
-            {"role": msg.role.value, "content": (msg.content or "")[:2000]}
-            for msg in body.messages[:16]
+            {
+             "role": msg.role.value,
+             "content": (msg.content or "")[:MAX_MESSAGE_CHARS],
+            }
+            for msg in body.messages[:MAX_MESSAGES]
         ]
 
     if not final_messages and body.prompt:
@@ -165,24 +181,56 @@ async def chat(
             detail="AI service unavailable",
         )
 
-
 # ---------------------------------------------------------------------------
-# POST /ai/generate
+# POST /ai/generate-image
 # ---------------------------------------------------------------------------
 @router.post(
-    "/generate",
-    summary="Generate text with sanitized prompt",
-    response_model=ProviderResult,
+    "/generate-image",
+    summary="Generate an image from an assignment topic description",
+    response_model=ImageGenerationResponse,
+    dependencies=[Depends(require_permission("AI_IMAGE_GENERATION"))],
 )
-async def generate_text(request: GenerationRequest):
-    provider = get_provider()
-    content = await provider.generate_text(request.prompt)
-    return ProviderResult(
-        provider=provider.provider_name,
-        cached=False,
-        content=content,
-    )
+async def generate_image(
+    body: ImageGenerationRequest,
+    current_user: User = Depends(get_current_user),
+    _rate_limited: None = Depends(chat_rate_limiter.check_rate_limit),
+):
+    usage = await get_today_usage(current_user.id)
+    if usage >= DAILY_AI_LIMIT:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Daily AI usage limit exceeded",
+        )
 
+    try:
+        image_base64, used_provider = await ai_orchestrator.generate_image_with_fallback(
+            body.prompt
+        )
+        await increment_usage(current_user.id)
+        return ImageGenerationResponse(
+            provider=used_provider,
+            image_base64=image_base64,
+        )
+    except ProviderRateLimitError:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="AI provider rate limit exceeded",
+        )
+    except ProviderAPIError as error:
+        if error.status_code == 413:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="AI provider response too large",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI provider service unavailable",
+        )
+    except AIProviderError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Image generation service unavailable",
+        )
 
 # ---------------------------------------------------------------------------
 # GET /ai/health
