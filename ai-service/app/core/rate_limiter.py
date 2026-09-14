@@ -27,11 +27,8 @@ class RateLimiter:
 
         redis_client = get_redis()
         if redis_client is None:
-            # Fail closed if Redis is entirely unconfigured/unavailable
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Rate limiter unavailable",
-            )
+            # Fail open if Redis is entirely unconfigured/unavailable for local dev
+            return
 
         key = f"ai:ratelimit:{client_id}"
 

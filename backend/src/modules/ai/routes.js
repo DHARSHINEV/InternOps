@@ -150,6 +150,7 @@ async function routes(fastify) {
         const result = await generateAIResponse({
           userId: req.user.id,
           messages: finalMessages,
+          authorization: req.headers.authorization,
         });
 
         if (result.fallback) {

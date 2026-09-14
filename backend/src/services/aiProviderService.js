@@ -412,13 +412,17 @@ async function callHuggingFace(messages) {
   return text;
 }
 
-async function callFastAPI(messages) {
+async function callFastAPI(messages, authorization) {
   const baseUrl = config.ai.fastapiUrl || 'http://localhost:8000';
+  const headers = {
+    'Content-Type': 'application/json',
+  };
+  if (authorization) {
+    headers['Authorization'] = authorization;
+  }
   const response = await fetchWithTimeout(`${baseUrl}/ai/chat`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({ messages }),
   });
 
@@ -502,7 +506,7 @@ function createFallbackResponse(errors) {
   };
 }
 
-async function generateAIResponse({ userId, messages }) {
+async function generateAIResponse({ userId, messages, authorization }) {
   const safeMessages = Array.isArray(messages) ? messages : [];
   const sanitizedMessages = safeMessages.slice(-16).map((m) => ({
     role: m.role,
@@ -546,7 +550,7 @@ async function generateAIResponse({ userId, messages }) {
     }
 
     try {
-      const content = await provider.call(sanitizedMessages);
+      const content = await provider.call(sanitizedMessages, authorization);
 
       recordSuccess(providerName);
 
