@@ -44,7 +44,7 @@ const extraHeaders = [
 - **Proofs Pending:** Count of proof submissions awaiting verification
 - **Domain:** New internship domain field (supports categorizing internships)
 
-### 2. Database Schema Addition (`backend/migrations/036_add_internship_domain_to_users.sql`)
+### 2. Database Schema Addition (`backend/migrations/055_add_internship_domain_to_users.sql`)
 
 Added new `internship_domain` column to the `users` table:
 
@@ -119,7 +119,7 @@ Jane Smith,jane@example.com,CAPTAIN,Marketing,9876543211,Bangalore,BITS Pilani,B
 | `backend/src/modules/team/routes.js`                        | Enhanced `toCsv()` function with performance metrics |
 | `backend/src/modules/team/repository.js`                    | Added `internship_domain` to member columns          |
 | `frontend/src/pages/Team.jsx`                               | Added UI support for internship domain field         |
-| `backend/migrations/036_add_internship_domain_to_users.sql` | Database schema: add `internship_domain` column      |
+| `backend/migrations/055_add_internship_domain_to_users.sql` | Database schema: add `internship_domain` column      |
 
 ---
 

@@ -54,7 +54,7 @@ This created a **data completeness gap** that undermined trust in the export fea
 - Tasks formatted as `verified_tasks/total_tasks`
 - Proofs Pending shows count of submissions awaiting verification
 
-### 2. Database Schema (`backend/migrations/036_add_internship_domain_to_users.sql`)
+### 2. Database Schema (`backend/migrations/055_add_internship_domain_to_users.sql`)
 
 - Added `internship_domain` column to users table
 
@@ -81,7 +81,7 @@ This created a **data completeness gap** that undermined trust in the export fea
 - `backend/src/modules/team/routes.js` ✓
 - `backend/src/modules/team/repository.js` ✓
 - `frontend/src/pages/Team.jsx` ✓
-- `backend/migrations/036_add_internship_domain_to_users.sql` ✓
+- `backend/migrations/055_add_internship_domain_to_users.sql` ✓
 - `pull_request_description.md` ✓
 ```
 
@@ -123,7 +123,7 @@ curl -X PATCH \
 | File                                                        | Status      | Purpose                   |
 | ----------------------------------------------------------- | ----------- | ------------------------- |
 | `CSV_EXPORT_FIX_SUMMARY.md`                                 | ✅ Created  | Documentation             |
-| `backend/migrations/036_add_internship_domain_to_users.sql` | ✅ Created  | DB schema migration       |
+| `backend/migrations/055_add_internship_domain_to_users.sql` | ✅ Created  | DB schema migration       |
 | `backend/src/modules/team/routes.js`                        | ✅ Modified | CSV export with 4 fields  |
 | `backend/src/modules/team/repository.js`                    | ✅ Modified | Internship domain support |
 | `frontend/src/pages/Team.jsx`                               | ✅ Modified | UI for domain field       |

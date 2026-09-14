@@ -57,7 +57,7 @@ const extraHeaders = [
 - **Domain**: Internship domain (new field added)
 - **Status**: "Suspended" or internship status (ACTIVE, COMPLETED, etc.)
 
-### 2. **Database Schema Changes** (`backend/migrations/036_add_internship_domain_to_users.sql`)
+### 2. **Database Schema Changes** (`backend/migrations/055_add_internship_domain_to_users.sql`)
 
 Added new `internship_domain` column to the `users` table:
 
@@ -129,7 +129,7 @@ Jane Smith,jane@example.com,CAPTAIN,Marketing,9876543211,Bangalore,BITS Pilani,B
 | `backend/src/modules/team/routes.js`                        | Enhanced `toCsv()` function to include performance metrics |
 | `backend/src/modules/team/repository.js`                    | Added `internship_domain` field to member columns          |
 | `frontend/src/pages/Team.jsx`                               | Added internship domain UI support                         |
-| `backend/migrations/036_add_internship_domain_to_users.sql` | Added database column                                      |
+| `backend/migrations/055_add_internship_domain_to_users.sql` | Added database column                                      |
 
 ---
 
