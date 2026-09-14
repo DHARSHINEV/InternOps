@@ -3,10 +3,10 @@ AI routes — Python/FastAPI port of ai_routes.js
 
 Split to match ai-service/app's layout (api/ + core/ + models/ + providers/):
   - app/models/ai.py         -> request/response schemas
-  - app/core/auth.py          -> get_current_user (JWT auth via Authorization: Bearer header)
-  - app/core/rbac.py          -> require_permission (role/permission-based access control)
-  - app/core/rate_limit.py    -> enforce_rate_limit (Redis-backed rate limiting)
-  - app/core/usage.py         -> daily usage tracking (Postgres-backed, per-user/per-day)
+  - app/core/auth.py          -> get_current_user (STUB)
+   - app/core/rbac.py          -> require_permission (STUB)
+  - app/core/rate_limit.py    -> enforce_rate_limit (STUB)
+  - app/core/usage.py         -> daily usage tracking (STUB)
   - app/providers/*           -> base/gemini/openai adapters
   - app/providers/registry.py -> provider selection (get_provider)
 """
@@ -36,17 +36,13 @@ from app.models.ai import (
     ImageGenerationRequest,
     ImageGenerationResponse,
 )
-from app.core.cache import cache_key, get_or_set
 from app.providers import ai_orchestrator
 from app.providers.base import(
   AIProviderError,
   ProviderAPIError,
   ProviderRateLimitError,
 )
-from app.providers.registry import (
-  get_configured_providers_health,
-  get_provider,
-)
+from app.providers.registry import get_configured_providers_health
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
@@ -56,23 +52,20 @@ MAX_TOTAL_CHARS = 32000
 
 
 async def call_provider(user_id: str, messages: List[dict]) -> ProviderResult:
-    provider = get_provider()
-    primary_provider = provider.provider_name
-    model = provider.model_name
-    key = cache_key(primary_provider, model, messages, 0.7)
-
-    async def _compute():
-        content, used_provider = await ai_orchestrator.generate_chat_with_fallback(
-            messages
-        )
-        return {"content": content, "provider": used_provider}
-
-    res_dict, cached = await get_or_set(key, _compute)
+    # Caching lives entirely in the orchestrator (app/providers/orchestrator.py:
+    # cache_key()/_execute_with_failover(), backed by app/core/cache.py) so
+    # /ai/chat, /generate, and /ai/generate-image all share one cache-key
+    # format, TTL, and invalidation path instead of each keeping their own
+    # (see #1894 — this used to also cache here via get_or_set(), producing
+    # a second, inconsistent Redis entry for the same logical request).
+    content, used_provider, cached = await ai_orchestrator.generate_chat_with_cache_status(
+        messages
+    )
 
     return ProviderResult(
-        provider=res_dict["provider"],
+        provider=used_provider,
         cached=cached,
-        content=res_dict["content"],
+        content=content,
     )
 
 
