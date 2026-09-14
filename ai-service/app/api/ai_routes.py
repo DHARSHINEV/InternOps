@@ -63,7 +63,6 @@ async def call_provider(user_id: str, messages: List[dict]) -> ProviderResult:
         cached=cached,
         content=content,
     )
-
 def get_provider_health() -> list:
     return get_configured_providers_health()
 
