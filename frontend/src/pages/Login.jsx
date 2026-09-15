@@ -309,6 +309,7 @@ export default function Login() {
                   <input
                     id="email"
                     type="email"
+                    maxLength={254}
                     value={email}
                     onChange={handleEmailChange}
                     onKeyDown={blockSpaceKey}
@@ -339,6 +340,7 @@ export default function Login() {
                   <input
                     id="password"
                     type={show ? 'text' : 'password'}
+                    maxLength={128}
                     value={password}
                     onChange={handlePasswordChange}
                     onKeyDown={blockSpaceKey}

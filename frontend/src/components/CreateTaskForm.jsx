@@ -15,7 +15,7 @@ const PLATFORMS = [
   'Other',
 ];
 
-export default function CreateTaskForm() {
+export default function CreateTaskForm({ departmentId } = {}) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
     title: '',
@@ -33,7 +33,9 @@ export default function CreateTaskForm() {
   const createMutation = useMutation({
     mutationFn: (data) => api.post('/tasks', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({
+        queryKey: ['tasks', departmentId || ''],
+      });
       setError('');
       setMsg('✓ Task created');
       setForm({
@@ -116,6 +118,7 @@ export default function CreateTaskForm() {
           createMutation.mutate({
             ...form,
             imagePath: generatedImage?.path,
+            ...(departmentId ? { department_id: departmentId } : {}),
           });
         }}
         className="space-y-5"

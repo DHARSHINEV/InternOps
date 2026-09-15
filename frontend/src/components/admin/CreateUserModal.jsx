@@ -270,6 +270,7 @@ export default function CreateUserModal({ open, onClose }) {
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
                   <input
                     type="email"
+                    maxLength={254}
                     required
                     placeholder="johndoe@company.com"
                     value={email}
@@ -286,6 +287,7 @@ export default function CreateUserModal({ open, onClose }) {
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
                   <input
                     type={showPassword ? 'text' : 'password'}
+                    maxLength={128}
                     required
                     placeholder="Minimum 8 characters"
                     value={password}
