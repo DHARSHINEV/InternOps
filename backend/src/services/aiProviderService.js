@@ -1,6 +1,11 @@
 const crypto = require('crypto');
 const { LRUCache } = require('lru-cache');
-const { GoogleGenAI } = require('@google/genai');
+let GoogleGenAI;
+try {
+  ({ GoogleGenAI } = require('@google/genai'));
+} catch (e) {
+  // Optional dependency
+}
 const config = require('../config');
 const { getRedisClient } = require('../config/redis');
 const { safeParseJSON } = require('../utils/promptCleaner');
@@ -364,6 +369,7 @@ async function callGemini(messages) {
   const key = config.ai.geminiKey || '';
   const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
 
+  if (!GoogleGenAI) throw new Error('GoogleGenAI dependency not loaded');
   const ai = new GoogleGenAI({ apiKey: key });
   const response = await ai.models.generateContent({
     model: modelName,
