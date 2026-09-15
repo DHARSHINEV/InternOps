@@ -16,6 +16,7 @@ const RETRY_DELAY_MS = 100;
 const MIGRATION_LOCK_ID = 727100;
 
 const MIGRATION_RENAMES = {
+  '055_keyset_pagination_indexes.sql': '056_keyset_pagination_indexes.sql',
   '003_password_reset.sql': '004_password_reset.sql',
   '010_member_details.sql': '005_member_details.sql',
   '011_email_verification.sql': '006_email_verification.sql',
