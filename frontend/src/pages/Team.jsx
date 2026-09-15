@@ -19,6 +19,7 @@ import CustomDatePicker from '../components/CustomDatePicker';
 import { ApiErrorState } from '../components/ui';
 import { getTeamRoleBreakdown } from '../utils/teamRoleBreakdown';
 import { useRouteInitialLoading } from '../components/loading/RouteInitialLoading';
+import { getApiErrorMessage } from '../lib/apiError';
 
 const ROLE_LABEL = {
   SENIOR_TL: 'Senior TL',
@@ -362,8 +363,7 @@ function AddMemberModal({ onClose }) {
       queryClient.invalidateQueries({ queryKey: ['teamMembers'] });
       onClose();
     },
-    onError: (err) =>
-      setError(err.response?.data?.error || 'Failed to add member'),
+    onError: (err) => setError(getApiErrorMessage(err, 'Failed to add member')),
   });
 
   const submit = (e) => {
