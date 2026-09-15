@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getApiErrorMessage } from '../../lib/apiError';
 import {
   Mail,
   Lock,
@@ -150,7 +151,7 @@ export default function CreateUserModal({ open, onClose }) {
       }, 1400);
     },
     onError: (err) => {
-      setError(err.response?.data?.error || 'Registration failed');
+      setError(getApiErrorMessage(err, 'Registration failed'));
       setSuccessMsg('');
     },
   });

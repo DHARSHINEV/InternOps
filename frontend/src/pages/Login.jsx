@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { getApiErrorMessage } from '../lib/apiError';
 import {
   Mail,
   Lock,
@@ -224,7 +225,7 @@ export default function Login() {
         replace: true,
       });
     },
-    onError: (err) => setError(err.response?.data?.error || 'Login failed'),
+    onError: (err) => setError(getApiErrorMessage(err, 'Login failed')),
   });
 
   const handleSubmit = (e) => {

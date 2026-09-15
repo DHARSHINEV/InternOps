@@ -4,6 +4,7 @@ import useAuthStore from '../../store/auth';
 import api from '../../lib/axios';
 import { PageHeader, Card, Badge, Spinner } from '../../components/ui';
 import CustomDatePicker from '../../components/CustomDatePicker';
+import { getApiErrorMessage } from '../../lib/apiError';
 
 const ROLE_COLOR = {
   ADMIN: 'purple',
@@ -119,7 +120,7 @@ export default function Reports() {
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 rounded-lg">
               <p className="text-red-600 dark:text-red-400 text-sm font-medium">
                 Failed to load attendance data:{' '}
-                {attendanceQuery.error?.message || 'Unknown error'}
+                {getApiErrorMessage(attendanceQuery.error, 'Unknown error')}
               </p>
             </div>
           ) : !attendanceData?.length ? (
@@ -167,7 +168,7 @@ export default function Reports() {
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 rounded-lg">
               <p className="text-red-600 dark:text-red-400 text-sm font-medium">
                 Failed to load ratings data:{' '}
-                {ratingsQuery.error?.message || 'Unknown error'}
+                {getApiErrorMessage(ratingsQuery.error, 'Unknown error')}
               </p>
             </div>
           ) : !ratingsData?.length ? (
@@ -216,7 +217,7 @@ export default function Reports() {
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 rounded-lg">
               <p className="text-red-600 dark:text-red-400 text-sm font-medium">
                 Failed to load tasks data:{' '}
-                {tasksQuery.error?.message || 'Unknown error'}
+                {getApiErrorMessage(tasksQuery.error, 'Unknown error')}
               </p>
             </div>
           ) : !tasksData?.length ? (

@@ -4,6 +4,7 @@ import api from '../lib/axios';
 import { Card, Btn, Input, ConfirmationModal } from './ui';
 import CustomSelect from './CustomSelect';
 import CustomDatePicker from './CustomDatePicker';
+import { getApiErrorMessage } from '../lib/apiError';
 
 export default function BulkAttendanceForm({
   roster,
@@ -56,7 +57,7 @@ export default function BulkAttendanceForm({
       setFillMissing(false);
       setTimeout(() => setMsg(''), 2500);
     },
-    onError: (err) => setError(err.response?.data?.error || 'Bulk mark failed'),
+    onError: (err) => setError(getApiErrorMessage(err, 'Bulk mark failed')),
   });
 
   const effectiveReports = roster || reports;
