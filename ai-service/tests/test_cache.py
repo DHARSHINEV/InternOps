@@ -235,6 +235,59 @@ def test_ai_route_integration_cache_hit_and_miss(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_memory_cache_evicts_oldest_when_over_capacity(monkeypatch):
+    """
+    Regression test for #2060: without Redis configured, the in-memory
+    fallback cache used to grow without bound as long as entries hadn't
+    expired yet, since eviction only ever removed already-expired keys.
+    Under sustained/concurrent traffic with a long TTL this leaks memory
+    and can OOM the process. The cache must now enforce a hard size cap
+    (AI_MEMORY_CACHE_MAX_SIZE) by evicting the least-recently-used entries,
+    independent of whether anything has expired.
+    """
+    import app.core.cache as cache_module
+
+    monkeypatch.setattr(cache_module.settings, "AI_MEMORY_CACHE_MAX_SIZE", 3)
+
+    await set_cached("key1", "value1", ttl=3600)
+    await set_cached("key2", "value2", ttl=3600)
+    await set_cached("key3", "value3", ttl=3600)
+
+    assert len(cache_module._memory_cache) == 3
+
+    # Adding a 4th entry, none of which have expired, must evict the
+    # least-recently-used one (key1) rather than let the cache grow.
+    await set_cached("key4", "value4", ttl=3600)
+
+    assert len(cache_module._memory_cache) == 3
+    assert await get_cached("key1") is None
+    assert await get_cached("key2") == "value2"
+    assert await get_cached("key3") == "value3"
+    assert await get_cached("key4") == "value4"
+
+
+@pytest.mark.asyncio
+async def test_memory_cache_lru_access_order_protects_hot_keys(monkeypatch):
+    """Recently accessed entries should survive eviction over stale ones."""
+    import app.core.cache as cache_module
+
+    monkeypatch.setattr(cache_module.settings, "AI_MEMORY_CACHE_MAX_SIZE", 2)
+
+    await set_cached("hot", "hot_value", ttl=3600)
+    await set_cached("cold", "cold_value", ttl=3600)
+
+    # Touch "hot" so it becomes the most-recently-used entry.
+    assert await get_cached("hot") == "hot_value"
+
+    # This push should evict "cold" (least-recently-used), not "hot".
+    await set_cached("new", "new_value", ttl=3600)
+
+    assert await get_cached("cold") is None
+    assert await get_cached("hot") == "hot_value"
+    assert await get_cached("new") == "new_value"
+
+
+@pytest.mark.asyncio
 async def test_set_cached_uses_configured_ttl(monkeypatch):
     calls = {}
 
