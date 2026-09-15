@@ -62,25 +62,17 @@ async function getTeamMembers(managerId, departmentId) {
       WHERE id = $1 AND deleted_at IS NULL
     ), team AS (
       SELECT u.id, u.manager_id, 1 AS depth, ARRAY[r.id, u.id] AS path,
-             ${roleRankSql('u')} AS structural_rank
+         ${roleRankSql('u')} AS structural_rank
       FROM requester r
       INNER JOIN users u
         ON u.deleted_at IS NULL
        AND u.role <> 'ADMIN'
        AND u.id <> r.id
-       AND (
-         (
-           r.role = 'SENIOR_TL'
-           AND r.department_id IS NOT NULL
-           AND u.department_id = r.department_id
-         )
-         OR (r.role <> 'SENIOR_TL' AND u.manager_id = r.id)
-       )
+       AND u.manager_id = r.id
       UNION ALL
       SELECT u.id, u.manager_id, t.depth + 1, t.path || u.id,
              ${roleRankSql('u')} AS structural_rank
       FROM team t
-      INNER JOIN requester r ON r.role <> 'SENIOR_TL'
       INNER JOIN users u
         ON u.manager_id = t.id
        AND u.deleted_at IS NULL
@@ -257,18 +249,10 @@ async function getPendingProofs(managerId, limit = 50) {
         ON u.deleted_at IS NULL
        AND u.role <> 'ADMIN'
        AND u.id <> r.id
-       AND (
-         (
-           r.role = 'SENIOR_TL'
-           AND r.department_id IS NOT NULL
-           AND u.department_id = r.department_id
-         )
-         OR (r.role <> 'SENIOR_TL' AND u.manager_id = r.id)
-       )
+       AND u.manager_id = r.id
       UNION ALL
       SELECT u.id, u.manager_id, t.depth + 1, t.path || u.id
       FROM team t
-      INNER JOIN requester r ON r.role <> 'SENIOR_TL'
       INNER JOIN users u
         ON u.manager_id = t.id
        AND u.deleted_at IS NULL
