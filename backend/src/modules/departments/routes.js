@@ -30,7 +30,7 @@ async function routes(fastify) {
         return reply.status(400).send({ error: 'Name required' });
       }
 
-      const dept = await service.createDepartment(name, req.user.id);
+      const dept = await repo.createDepartment(name, req.user.id);
       req.auditOnResponse = {
         userId: req.user.id,
         action: 'DEPARTMENT_CREATED',
