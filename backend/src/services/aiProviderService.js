@@ -367,7 +367,7 @@ async function callDeepSeek(messages) {
 async function callGemini(messages) {
   const prompt = buildPrompt(messages);
   const key = config.ai.geminiKey || '';
-  const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+  const modelName = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
   if (!GoogleGenAI) throw new Error('GoogleGenAI dependency not loaded');
   const ai = new GoogleGenAI({ apiKey: key });
