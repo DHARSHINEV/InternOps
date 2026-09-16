@@ -9,12 +9,19 @@ const { checkHierarchyAccess } = require('../../utils/hierarchy');
 const repo = require('./repository');
 const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
 const { dbTx } = require('../../utils/dbTx');
+const pLimit = require('p-limit');
 const {
   send: sendNotification,
   bulkSend,
   getUnreadCount,
 } = require('../notifications/repository');
 const { z } = require('zod');
+const { decodeCursor, encodeCursor } = require('../../utils/keysetCursor');
+
+function isFutureDate(dateStr) {
+  const today = new Date().toISOString().slice(0, 10);
+  return dateStr > today;
+}
 
 async function routes(fastify) {
   // Mark attendance (manager roles; target must be in the requester's hierarchy)
@@ -22,7 +29,7 @@ async function routes(fastify) {
     '/mark',
     {
       schema: { tags: ['Attendance'], description: 'Mark single attendance' },
-      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL'), sanitize],
     },
     async (req, reply) => {
       try {
@@ -31,17 +38,26 @@ async function routes(fastify) {
           date: z
             .string()
             .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD'),
-          status: z.enum(['PRESENT', 'ABSENT', 'HALF_DAY']),
+          status: z.enum(['PRESENT', 'ABSENT', 'INFORMED']),
           remarks: z.string().max(500).optional(),
         });
+
         const parsed = schema.safeParse(req.body);
+
         if (!parsed.success) {
           return reply.status(400).send({
             error: 'Validation failed',
             details: parsed.error.issues,
           });
         }
+
         const { user_id, date, status, remarks } = parsed.data;
+
+        if (isFutureDate(date)) {
+          return reply
+            .status(400)
+            .send({ error: 'Attendance cannot be marked for future dates' });
+        }
 
         if (req.user.role !== 'ADMIN' && req.user.id === user_id) {
           return reply
@@ -108,7 +124,16 @@ async function routes(fastify) {
         return reply.status(201).send(attendance);
       } catch (err) {
         req.log.error(err, 'Error in POST /attendance/mark');
-        return reply.status(500).send({ error: 'Internal server error' });
+
+        if (err.statusCode) {
+          return reply.status(err.statusCode).send({
+            error: err.message,
+          });
+        }
+
+        return reply.status(500).send({
+          error: 'Internal server error',
+        });
       }
     }
   );
@@ -119,7 +144,7 @@ async function routes(fastify) {
     {
       config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
       schema: { tags: ['Attendance'], description: 'Bulk mark attendance' },
-      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL'), sanitize],
     },
     async (req, reply) => {
       try {
@@ -128,34 +153,48 @@ async function routes(fastify) {
           date: z
             .string()
             .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD'),
-          status: z.enum(['PRESENT', 'ABSENT', 'HALF_DAY']),
+          status: z.enum(['PRESENT', 'ABSENT', 'INFORMED']),
           remarks: z.string().max(500).optional(),
         });
+
         const bodySchema = z.object({
-          entries: z.array(entrySchema).min(1),
+          entries: z.array(entrySchema).min(1).max(200),
         });
+
         const parsed = bodySchema.safeParse(req.body);
+
         if (!parsed.success) {
           return reply.status(400).send({
             error: 'Validation failed',
             details: parsed.error.issues,
           });
         }
+
         const entries = parsed.data.entries;
 
-        // Authorize all entries in a single recursive query — avoids N+1.
+        if (entries.some((e) => isFutureDate(e.date))) {
+          return reply
+            .status(400)
+            .send({ error: 'Attendance cannot be marked for future dates' });
+        }
+
+        // Authorize all entries in a single recursive query - avoids N+1.
         if (req.user.role !== 'ADMIN') {
           const targetIds = [...new Set(entries.map((e) => e.user_id))];
+
           if (targetIds.includes(req.user.id)) {
             return reply.status(400).send({
               error: 'You cannot mark your own attendance',
             });
           }
+
           const allowedIds = await repo.listHierarchySubordinates(
             req.user.id,
             targetIds
           );
+
           const unauthorized = targetIds.filter((id) => !allowedIds.has(id));
+
           if (unauthorized.length > 0) {
             return reply.status(403).send({
               error: 'Some selected members are not in your hierarchy',
@@ -173,7 +212,10 @@ async function routes(fastify) {
               ...extractRequestInfo(req),
               action: 'ATTENDANCE_BULK_MARKED',
               resourceType: 'attendance',
-              details: { count: records.length, date: entries[0]?.date },
+              details: {
+                count: records.length,
+                date: entries[0]?.date,
+              },
             },
             client
           );
@@ -189,21 +231,30 @@ async function routes(fastify) {
         }));
 
         const notifications = await bulkSend(notificationsData);
+        const limit = pLimit(5);
 
-        for (const notification of notifications) {
-          const unreadCount = await getUnreadCount(notification.user_id);
+        await Promise.all(
+          notifications.map((notification) =>
+            limit(async () => {
+              const unreadCount = await getUnreadCount(notification.user_id);
 
-          await notifyUser(notification.user_id, 'notification-received', {
-            notification,
-            unreadCount,
-          });
-        }
+              await notifyUser(notification.user_id, 'notification-received', {
+                notification,
+                unreadCount,
+              });
+            })
+          )
+        );
 
-        for (const attendance of results) {
-          await notifyUser(attendance.user_id, 'attendance-marked', {
-            attendance,
-          });
-        }
+        await Promise.all(
+          results.map((attendance) =>
+            limit(async () => {
+              await notifyUser(attendance.user_id, 'attendance-marked', {
+                attendance,
+              });
+            })
+          )
+        );
 
         return {
           success: true,
@@ -212,17 +263,94 @@ async function routes(fastify) {
         };
       } catch (err) {
         req.log.error(err, 'Error in POST /attendance/bulk');
-        return reply.status(500).send({ error: 'Internal server error' });
+
+        if (err.statusCode) {
+          return reply.status(err.statusCode).send({
+            error: err.message,
+          });
+        }
+
+        return reply.status(500).send({
+          error: 'Internal server error',
+        });
       }
     }
   );
-  // Get attendance for a user (with ownership check)
+
+  // Department-scoped attendance sheet
+  fastify.get(
+    '/department/:deptId/sheet',
+    {
+      schema: {
+        tags: ['Attendance'],
+        description: 'Get a department attendance sheet',
+      },
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')],
+    },
+    async (req, reply) => {
+      try {
+        const paramsSchema = z.object({
+          deptId: z.string().uuid(),
+        });
+
+        const querySchema = z
+          .object({
+            from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+            to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          })
+          .refine((value) => value.from <= value.to, {
+            message: 'from must be on or before to',
+          })
+          .refine(
+            (value) => {
+              const from = new Date(`${value.from}T00:00:00Z`);
+              const to = new Date(`${value.to}T00:00:00Z`);
+
+              return (to - from) / 86400000 <= 62;
+            },
+            {
+              message: 'Date range cannot exceed 62 days',
+            }
+          );
+
+        const parsedParams = paramsSchema.safeParse(req.params);
+        const parsedQuery = querySchema.safeParse(req.query);
+
+        if (!parsedParams.success || !parsedQuery.success) {
+          return reply.status(400).send({
+            error: 'Invalid attendance sheet request',
+            details: [
+              ...(parsedParams.success ? [] : parsedParams.error.issues),
+              ...(parsedQuery.success ? [] : parsedQuery.error.issues),
+            ],
+          });
+        }
+
+        return await repo.getDepartmentAttendanceSheet({
+          departmentId: parsedParams.data.deptId,
+          requesterId: req.user.id,
+          isAdmin: req.user.role === 'ADMIN',
+          requesterRole: req.user.role,
+          from: parsedQuery.data.from,
+          to: parsedQuery.data.to,
+        });
+      } catch (err) {
+        req.log.error(err, 'Error in GET /attendance/department/:deptId/sheet');
+
+        return reply.status(500).send({
+          error: 'Internal server error',
+        });
+      }
+    }
+  );
+
+  // Get attendance for a user using keyset pagination
   fastify.get(
     '/:userId',
     {
       schema: {
         tags: ['Attendance'],
-        description: 'Get attendance records',
+        description: 'Get attendance records using keyset pagination',
         params: {
           type: 'object',
           additionalProperties: false,
@@ -246,16 +374,14 @@ async function routes(fastify) {
               type: 'string',
               format: 'date',
             },
-            page: {
-              type: 'integer',
-              minimum: 1,
-              default: 1,
-            },
             limit: {
               type: 'integer',
               minimum: 1,
               maximum: 100,
               default: 30,
+            },
+            cursor: {
+              type: 'string',
             },
           },
         },
@@ -264,7 +390,7 @@ async function routes(fastify) {
     },
     async (req, reply) => {
       try {
-        const { from, to, page, limit } = req.query;
+        const { from, to, limit, cursor } = req.query;
 
         if (from && to && new Date(from) > new Date(to)) {
           return reply.status(400).send({
@@ -272,16 +398,45 @@ async function routes(fastify) {
           });
         }
 
-        const result = await service.getAttendance(req.params.userId, {
+        let decodedCursor = null;
+
+        if (cursor) {
+          try {
+            decodedCursor = decodeCursor(cursor);
+          } catch (err) {
+            return reply.status(err.statusCode || 400).send({
+              error: err.message || 'Invalid cursor',
+            });
+          }
+
+          if (
+            typeof decodedCursor.id !== 'string' ||
+            typeof decodedCursor.date !== 'string' ||
+            Number.isNaN(Date.parse(decodedCursor.date))
+          ) {
+            return reply.status(400).send({
+              error: 'Invalid cursor',
+            });
+          }
+        }
+
+        const result = await repo.getAttendance(req.params.userId, {
           from,
           to,
-          page,
           limit,
+          cursor: decodedCursor,
         });
 
-        return reply.send(result);
+        return reply.send({
+          records: result.records,
+          limit: result.limit,
+          nextCursor: result.nextCursor
+            ? encodeCursor(result.nextCursor)
+            : null,
+        });
       } catch (err) {
         req.log.error(err, 'Error in GET /attendance/:userId');
+
         return reply.status(500).send({
           error: 'Internal server error',
         });
@@ -289,7 +444,7 @@ async function routes(fastify) {
     }
   );
 
-  // Monthly stats
+  // Monthly stats (requires ownership)
   fastify.get(
     '/:userId/stats',
     {
@@ -299,7 +454,6 @@ async function routes(fastify) {
       },
       preHandler: [auth, ownership('userId')],
     },
-
     async (req, reply) => {
       try {
         const schema = z.object({
@@ -339,7 +493,6 @@ async function routes(fastify) {
       },
       preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')],
     },
-
     async (req, reply) => {
       try {
         if (req.user.role === 'ADMIN') {
@@ -352,7 +505,11 @@ async function routes(fastify) {
           return await repo.getAllUsers();
         }
 
-        return await repo.getAuthorizedSubordinates(req.user.id);
+        return await repo.getAuthorizedSubordinates(
+          req.user.id,
+          req.user.role,
+          req.user.departmentId || req.user.department_id
+        );
       } catch (err) {
         req.log.error(err, 'Error in GET /attendance/authorized-members');
 
@@ -389,6 +546,7 @@ async function routes(fastify) {
         });
 
         const parsed = schema.safeParse(req.query);
+
         if (!parsed.success) {
           return reply.status(400).send({
             error: 'Validation failed',
@@ -397,15 +555,20 @@ async function routes(fastify) {
         }
 
         const isAdmin = req.user.role === 'ADMIN';
+
         const anomalies = await repo.getAnomalies(
           req.user.id,
           isAdmin,
           parsed.data
         );
+
         return anomalies;
       } catch (err) {
         req.log.error(err, 'Error in GET /attendance/anomalies');
-        return reply.status(500).send({ error: 'Internal server error' });
+
+        return reply.status(500).send({
+          error: 'Internal server error',
+        });
       }
     }
   );
@@ -430,9 +593,11 @@ async function routes(fastify) {
 
         // Log audit log event using audit repository
         const audit = require('../audit/repository');
+
         if (audit && typeof audit.logEvent === 'function') {
           await audit.logEvent({
             userId: req.user.id,
+            ...extractRequestInfo(req),
             action: 'ATTENDANCE_ANOMALY_VIEWED',
             resourceType: 'attendance_anomaly',
             resourceId: id,
@@ -447,16 +612,25 @@ async function routes(fastify) {
         return anomaly;
       } catch (err) {
         req.log.error(err, 'Error in POST /attendance/anomalies/:id/view');
+
         if (
           err.message.includes('Access denied') ||
           err.message.includes('not in your hierarchy')
         ) {
-          return reply.status(403).send({ error: err.message });
+          return reply.status(403).send({
+            error: err.message,
+          });
         }
+
         if (err.message.includes('not found')) {
-          return reply.status(404).send({ error: err.message });
+          return reply.status(404).send({
+            error: err.message,
+          });
         }
-        return reply.status(500).send({ error: 'Internal server error' });
+
+        return reply.status(500).send({
+          error: 'Internal server error',
+        });
       }
     }
   );
@@ -477,6 +651,7 @@ async function routes(fastify) {
         const { generateAccessToken } = require('../../utils/tokens');
 
         const baseUrl = config.ai.fastapiUrl || 'http://localhost:8000';
+
         const serviceToken = generateAccessToken({
           id: req.user.id,
           role: req.user.role,
@@ -499,13 +674,19 @@ async function routes(fastify) {
         }
 
         const data = await response.json();
+
         return reply.status(202).send(data);
       } catch (err) {
         req.log.error(err, 'Error in POST /attendance/anomalies/analyze');
-        return reply.status(503).send({ error: 'AI service unavailable' });
+
+        return reply.status(503).send({
+          error: 'AI service unavailable',
+        });
       }
     }
   );
 }
+
+routes.isFutureDate = isFutureDate;
 
 module.exports = routes;

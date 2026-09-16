@@ -2,7 +2,6 @@ const pool = require('../../config/db');
 
 async function getAuditLogs({
   limit,
-  offset,
   isAdmin,
   userId,
   resourceType,
@@ -10,6 +9,7 @@ async function getAuditLogs({
   search,
   startDate,
   endDate,
+  cursor,
 }) {
   const conditions = [];
   const params = [];
@@ -37,8 +37,10 @@ async function getAuditLogs({
   if (search) {
     params.push(`%${search}%`);
     const searchIdx1 = params.length;
+
     params.push(`%${search}%`);
     const searchIdx2 = params.length;
+
     conditions.push(
       `(u.email ILIKE $${searchIdx1} OR u.full_name ILIKE $${searchIdx2})`
     );
@@ -54,37 +56,48 @@ async function getAuditLogs({
     conditions.push(`al.created_at <= $${params.length}`);
   }
 
+  if (cursor) {
+    params.push(cursor.createdAt);
+    const createdAtIndex = params.length;
+
+    params.push(cursor.id);
+    const idIndex = params.length;
+
+    conditions.push(
+      `(al.created_at < $${createdAtIndex}
+        OR (
+          al.created_at = $${createdAtIndex}
+          AND al.id < $${idIndex}
+        ))`
+    );
+  }
+
   const whereClause = conditions.length
     ? `WHERE ${conditions.join(' AND ')}`
     : '';
 
-  const countResult = await pool.query(
-    `SELECT COUNT(*)
-     FROM audit_logs al
-     LEFT JOIN users u ON al.user_id = u.id
-     ${whereClause}`,
-    params
-  );
-
-  const total = Number(countResult.rows[0].count);
-
-  const dataParams = [...params, limit, offset];
-  const limitIndex = dataParams.length - 1;
-  const offsetIndex = dataParams.length;
+  const queryParams = [...params, limit + 1];
+  const limitIndex = queryParams.length;
 
   const logs = await pool.query(
-    `SELECT al.*, u.full_name AS actor_name, u.email AS actor_email
+    `SELECT
+       al.*,
+       u.full_name AS actor_name,
+       u.email AS actor_email
      FROM audit_logs al
      LEFT JOIN users u ON al.user_id = u.id
      ${whereClause}
-     ORDER BY al.created_at DESC
-     LIMIT $${limitIndex} OFFSET $${offsetIndex}`,
-    dataParams
+     ORDER BY al.created_at DESC, al.id DESC
+     LIMIT $${limitIndex}`,
+    queryParams
   );
 
+  const hasNextPage = logs.rows.length > limit;
+  const records = hasNextPage ? logs.rows.slice(0, limit) : logs.rows;
+
   return {
-    records: logs.rows,
-    total,
+    records,
+    hasNextPage,
   };
 }
 
@@ -100,8 +113,10 @@ async function logEvent(data) {
     ipAddress,
     userAgent,
   } = data || {};
+
   await pool.query(
-    `INSERT INTO audit_logs (user_id, action, resource_type, resource_id, details, old_value, new_value, ip_address, user_agent)
+    `INSERT INTO audit_logs
+      (user_id, action, resource_type, resource_id, details, old_value, new_value, ip_address, user_agent)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
     [
       userId || null,
@@ -116,7 +131,8 @@ async function logEvent(data) {
     ]
   );
 }
+
 module.exports = {
-  getAuditLogs,
   logEvent,
+  getAuditLogs,
 };

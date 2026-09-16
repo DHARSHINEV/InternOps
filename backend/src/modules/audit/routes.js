@@ -1,12 +1,12 @@
 const auth = require('../../middleware/auth');
 const { z } = require('zod');
 const { toSchema } = require('../../utils/schemaHelper');
-const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
+const { encodeCursor, decodeCursor } = require('../../utils/keysetCursor');
 
 const auditQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(50),
+  cursor: z.string().trim().optional(),
   userId: z.string().uuid().optional(),
   resourceType: z.string().trim().max(100).optional(),
   action: z.string().trim().max(100).optional(),
@@ -36,12 +36,13 @@ async function routes(fastify) {
       preHandler: [auth],
       schema: {
         tags: ['Audit'],
-        description: 'Get audit logs',
+        description: 'Get audit logs using keyset pagination',
         querystring: toSchema(auditQuerySchema),
       },
     },
     async (req, reply) => {
       const parsed = auditQuerySchema.safeParse(req.query);
+
       if (!parsed.success) {
         return reply.status(400).send({
           error: 'Invalid query parameters',
@@ -50,8 +51,8 @@ async function routes(fastify) {
       }
 
       const {
-        page,
         limit,
+        cursor,
         userId,
         resourceType,
         action,
@@ -59,11 +60,31 @@ async function routes(fastify) {
         startDate,
         endDate,
       } = parsed.data;
-      const offset = (page - 1) * limit;
 
-      const { records, total } = await repo.getAuditLogs({
+      let decodedCursor;
+
+      if (cursor) {
+        try {
+          decodedCursor = decodeCursor(cursor);
+        } catch (err) {
+          return reply.status(err.statusCode || 400).send({
+            error: err.message || 'Invalid cursor',
+          });
+        }
+
+        if (
+          typeof decodedCursor.id !== 'string' ||
+          typeof decodedCursor.createdAt !== 'string' ||
+          Number.isNaN(Date.parse(decodedCursor.createdAt))
+        ) {
+          return reply.status(400).send({
+            error: 'Invalid cursor',
+          });
+        }
+      }
+
+      const { records, hasNextPage } = await repo.getAuditLogs({
         limit,
-        offset,
         isAdmin: req.user.role === 'ADMIN',
         userId: req.user.role === 'ADMIN' ? userId : req.user.id,
         resourceType,
@@ -71,25 +92,37 @@ async function routes(fastify) {
         search,
         startDate,
         endDate,
+        cursor: decodedCursor,
       });
-      // Strip ip_address and user_agent for non-admins if the log is not their own
+
       const data = records.map((row) => {
         if (req.user.role !== 'ADMIN' && row.user_id !== req.user.id) {
           const { ip_address, user_agent, ...rest } = row;
+
           return {
             ...rest,
             ip_address: null,
             user_agent: null,
           };
         }
+
         return row;
       });
 
+      const lastRow = records[records.length - 1];
+
+      const nextCursor =
+        hasNextPage && lastRow
+          ? encodeCursor({
+              id: lastRow.id,
+              createdAt: lastRow.created_at,
+            })
+          : null;
+
       return {
         data,
-        total,
-        page,
         limit,
+        nextCursor,
       };
     }
   );

@@ -27,7 +27,8 @@ jobs:
 
     env:
       NODE_ENV: test
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/internops_test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/internops_test
       JWT_SECRET: ci-test-secret-do-not-use-in-prod
       JWT_REFRESH_SECRET: ci-test-refresh-secret
       JWT_REFRESH_EXPIRES_IN: 7d
@@ -69,9 +70,18 @@ jobs:
           psql -h localhost -p 5432 -U postgres -d internops_test \
             -c "SELECT current_user, current_database();"
 
+      - name: Validate migration filenames
+
+        run: |
+
+          cd backend
+
+          node -e "const fs=require('fs'); const files=fs.readdirSync('migrations').filter(f=>f.endsWith('.sql')).sort(); const seen=new Map(); for(const f of files){if(!/^\d{3}_[a-z0-9_]+\.sql$/.test(f)) throw new Error('Invalid migration filename: '+f); const p=f.slice(0,3); if(seen.has(p)) throw new Error('Duplicate migration prefix '+p+': '+seen.get(p)+' and '+f); seen.set(p,f);} console.log('Validated '+files.length+' migration filenames');"
+
       - name: Run migrations
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/internops_test
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/internops_test
         run: |
           cd backend
           echo "Running database migrations..."
@@ -93,7 +103,11 @@ jobs:
         run: npm run lint
 
       - name: Run Frontend Tests
-        run: cd frontend && npm run test
+        run: |
+          cd frontend
+          npm cache clean --force
+          npm ci --workspaces=false --include=optional --no-audit --no-fund
+          npm run test
 
       - name: Build frontend
         run: cd frontend && npm run build
