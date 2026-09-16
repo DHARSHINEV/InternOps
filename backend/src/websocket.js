@@ -280,4 +280,3 @@ function broadcastMutation(type, payload = {}) {
 }
 
 module.exports = { initializeWebSocket, getIO, notifyUser, broadcastMutation };
-

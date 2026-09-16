@@ -345,7 +345,10 @@ export default function DashboardLayout() {
   const accessToken = useAuthStore((s) => s.accessToken);
   const queryClient = useQueryClient();
 
-  const socket = accessToken && !user?.mustChangePassword ? connectSocket(accessToken) : null;
+  const socket =
+    accessToken && !user?.mustChangePassword
+      ? connectSocket(accessToken)
+      : null;
   useBackgroundCacheInvalidation(socket);
 
   useEffect(() => {

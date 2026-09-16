@@ -240,7 +240,12 @@ async function routes(fastify) {
           resourceId: result.id,
         };
 
-        broadcastMutation('proof', { id: result.id, intern_id: result.intern_id, task_id: result.task_id, status: result.status });
+        broadcastMutation('proof', {
+          id: result.id,
+          intern_id: result.intern_id,
+          task_id: result.task_id,
+          status: result.status,
+        });
 
         return result;
       } catch (err) {
@@ -284,7 +289,12 @@ async function routes(fastify) {
           resourceId: rejected.id,
         };
 
-        broadcastMutation('proof', { id: rejected.id, intern_id: rejected.intern_id, task_id: rejected.task_id, status: rejected.status });
+        broadcastMutation('proof', {
+          id: rejected.id,
+          intern_id: rejected.intern_id,
+          task_id: rejected.task_id,
+          status: rejected.status,
+        });
 
         return rejected;
       } catch (err) {

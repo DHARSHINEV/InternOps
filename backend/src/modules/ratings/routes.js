@@ -100,7 +100,11 @@ module.exports = async function ratingsRoutes(fastify) {
         rating,
       }).catch(() => {});
 
-      broadcastMutation('rating', { id: rating.id, rated_user_id: rating.rated_user_id, score: rating.score });
+      broadcastMutation('rating', {
+        id: rating.id,
+        rated_user_id: rating.rated_user_id,
+        score: rating.score,
+      });
 
       return reply.status(201).send(rating);
     }
