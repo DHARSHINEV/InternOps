@@ -71,7 +71,7 @@ services:
     restart: unless-stopped
   migrate:
     profiles:
-     - ops
+      - ops
     build: .
     env_file:
       - ./backend/.env
@@ -81,10 +81,10 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://internops:internops123@pgbouncer:6432/internops
-    command: ["npm", "run", "migrate"]
+    command: ['npm', 'run', 'migrate']
   seed:
     profiles:
-     - ops
+      - ops
     build: .
     env_file:
       - ./backend/.env
@@ -94,8 +94,8 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://internops:internops123@pgbouncer:6432/internops
-      ALLOW_SEED_IN_PRODUCTION: "true"
-    command: ["npm", "run", "seed"]
+      ALLOW_SEED_IN_PRODUCTION: 'true'
+    command: ['npm', 'run', 'seed']
 
   ai-service:
     build: ./ai-service
