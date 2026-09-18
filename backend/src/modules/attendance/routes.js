@@ -326,6 +326,21 @@ async function routes(fastify) {
           });
         }
 
+        if (req.user.role !== 'ADMIN') {
+          const requesterDepartmentId =
+            req.user.departmentId || req.user.department_id;
+
+          if (
+            !requesterDepartmentId ||
+            requesterDepartmentId !== parsedParams.data.deptId
+          ) {
+            return reply.status(403).send({
+              error:
+                'The requested department is outside your authorized scope',
+            });
+          }
+        }
+
         return await repo.getDepartmentAttendanceSheet({
           departmentId: parsedParams.data.deptId,
           requesterId: req.user.id,
