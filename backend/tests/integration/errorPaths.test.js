@@ -263,17 +263,28 @@ describe('API error-path integration tests', () => {
   });
 });
 describe('Redis unavailability fallback', () => {
-  it('continues token checks when Redis is unavailable', async () => {
-    const {
-      getRedisClient,
-      isAccessTokenBlacklisted,
-      blacklistAccessToken,
-    } = require('../../src/config/redis');
+  it('uses PostgreSQL revocation when Redis is unavailable', async () => {
+    const repository = require('../../src/modules/auth/repository');
+    const { getRedisClient } = require('../../src/config/redis');
+    const jti = `revocation-fallback-${Date.now()}`;
+    const user = await pool.query(
+      `SELECT id FROM users WHERE deleted_at IS NULL ORDER BY created_at LIMIT 1`
+    );
+    const userId = user.rows[0].id;
+    const expiresAt = new Date(Date.now() + 60_000);
 
-    // Test mode intentionally makes the Redis client unavailable. The
-    // application must treat that the same as a failed optional connection.
     await expect(getRedisClient()).resolves.toBeNull();
-    await expect(isAccessTokenBlacklisted('token-id')).resolves.toBe(false);
-    await expect(blacklistAccessToken('token-id', 60)).resolves.toBeUndefined();
+
+    try {
+      await repository.revokeAccessToken(jti, userId, expiresAt);
+      await expect(repository.isAccessTokenRevoked(jti)).resolves.toBe(true);
+      await expect(
+        repository.isAccessTokenRevoked(`${jti}-not-revoked`)
+      ).resolves.toBe(false);
+    } finally {
+      await pool.query('DELETE FROM revoked_access_tokens WHERE jti = $1', [
+        jti,
+      ]);
+    }
   });
 });
