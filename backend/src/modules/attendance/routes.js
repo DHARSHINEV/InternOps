@@ -203,8 +203,12 @@ async function routes(fastify) {
           }
         }
 
-        const { results } = await dbTx(async (client) => {
-          const records = await repo.bulkMark(entries, req.user.id, client);
+        const { results, skipped } = await dbTx(async (client) => {
+          const { records, skipped } = await repo.bulkMark(
+            entries,
+            req.user.id,
+            client
+          );
 
           await createAuditLog(
             {
@@ -214,18 +218,16 @@ async function routes(fastify) {
               resourceType: 'attendance',
               details: {
                 count: records.length,
+                skippedCount: skipped.length,
                 date: entries[0]?.date,
               },
             },
             client
           );
 
-          return {
-            results: records,
-          };
+          return { results: records, skipped };
         });
-
-        const notificationsData = entries.map((e) => ({
+        const notificationsData = results.map((e) => ({
           user_id: e.user_id,
           message: `Your attendance for ${e.date} has been marked as ${e.status}.`,
         }));
@@ -260,6 +262,7 @@ async function routes(fastify) {
           success: true,
           count: results.length,
           records: results,
+          skipped,
         };
       } catch (err) {
         req.log.error(err, 'Error in POST /attendance/bulk');
