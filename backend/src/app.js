@@ -418,7 +418,6 @@ app.setErrorHandler((error, request, reply) => {
       'Validation error'
     );
 
-
     const validationDetails = normalizeValidationDetails(error.issues || []);
 
     const validationDetails = normalizeValidationDetails(error.validation);
@@ -443,9 +442,7 @@ app.setErrorHandler((error, request, reply) => {
       'Zod validation error'
     );
 
-
     const validationDetails = normalizeValidationDetails(error.issues || []);
-
 
     const validationDetails = normalizeValidationDetails(error.issues || []);
 
@@ -587,7 +584,6 @@ const gracefulShutdown = async (signal) => {
   }, SHUTDOWN_TIMEOUT);
 
   try {
-    
     try {
       const io = getIO();
 
@@ -604,11 +600,9 @@ const gracefulShutdown = async (signal) => {
       githubSyncOrchestrator.shutdown();
       shutdownCronJobs();
     } catch (syncErr) {
-
       app.log.warn({ err: syncErr }, 'Error shutting down GitHub sync');
 
       app.log.warn({ err: syncErr }, 'Error shutting down background services');
-
     }
 
     try {
