@@ -25,7 +25,7 @@ const {
 const { csrfMiddleware } = require('./middleware/csrf');
 const { sanitizationMiddleware } = require('./middleware/sanitize');
 const { createAuditLog } = require('./utils/audit');
-const { setupCronJobs } = require('./utils/cron');
+const { setupCronJobs, shutdownCronJobs } = require('./utils/cron');
 const githubSyncOrchestrator = require('./modules/github-sync/orchestrator');
 const { normalizeValidationDetails } = require('./utils/validationError');
 
@@ -418,10 +418,12 @@ app.setErrorHandler((error, request, reply) => {
       'Validation error'
     );
 
+
+    const validationDetails = normalizeValidationDetails(error.issues || []);
+
     const validationDetails = normalizeValidationDetails(error.validation);
 
     const payload = validationPayload(validationDetails, request.id);
-
     return reply.status(400).send(payload);
   }
 
@@ -441,10 +443,13 @@ app.setErrorHandler((error, request, reply) => {
       'Zod validation error'
     );
 
+
+    const validationDetails = normalizeValidationDetails(error.issues || []);
+
+
     const validationDetails = normalizeValidationDetails(error.issues || []);
 
     const payload = validationPayload(validationDetails, request.id);
-
     return reply.status(400).send(payload);
   }
 
@@ -499,17 +504,13 @@ app.setErrorHandler((error, request, reply) => {
   });
 });
 
-if (process.env.NODE_ENV !== 'test') {
-  setupCronJobs();
-  githubSyncOrchestrator.initialize();
-}
-
 const bulkJobQueue = require('./services/bulkJobQueue');
 const verificationService = require('./modules/proof-submissions/verification.service');
 const {
   checkDatabase,
   integrationStatus,
   writeStartupSummary,
+  createBackgroundServiceDiagnostic,
 } = require('./utils/startupDiagnostics');
 
 const start = async () => {
@@ -525,6 +526,40 @@ const start = async () => {
     await getRedisClient();
     await bulkJobQueue.init();
     await verificationService.initQueue();
+
+    if (process.env.NODE_ENV !== 'test') {
+      const backgroundServices = {
+        cron: createBackgroundServiceDiagnostic(),
+        githubSync: createBackgroundServiceDiagnostic(),
+      };
+
+      const cronStart = Date.now();
+      try {
+        setupCronJobs();
+        backgroundServices.cron.state = 'ready';
+        backgroundServices.cron.durationMs = Date.now() - cronStart;
+      } catch (err) {
+        backgroundServices.cron.state = 'failed';
+        backgroundServices.cron.durationMs = Date.now() - cronStart;
+        throw err;
+      }
+
+      const githubSyncStart = Date.now();
+      try {
+        await githubSyncOrchestrator.initialize();
+        backgroundServices.githubSync.state = 'ready';
+        backgroundServices.githubSync.durationMs = Date.now() - githubSyncStart;
+      } catch (err) {
+        backgroundServices.githubSync.state = 'failed';
+        backgroundServices.githubSync.durationMs = Date.now() - githubSyncStart;
+        throw err;
+      }
+
+      app.log.info(
+        { backgroundServices },
+        '[STARTUP] Background services initialized'
+      );
+    }
 
     writeStartupSummary({
       logger: app.log,
@@ -552,8 +587,7 @@ const gracefulShutdown = async (signal) => {
   }, SHUTDOWN_TIMEOUT);
 
   try {
-    await app.close();
-
+    
     try {
       const io = getIO();
 
@@ -566,13 +600,15 @@ const gracefulShutdown = async (signal) => {
       app.log.warn({ err: wsErr }, 'Error closing WebSocket server');
     }
 
-    await pool.end();
-    await flushSentry(2000);
-
     try {
       githubSyncOrchestrator.shutdown();
+      shutdownCronJobs();
     } catch (syncErr) {
+
       app.log.warn({ err: syncErr }, 'Error shutting down GitHub sync');
+
+      app.log.warn({ err: syncErr }, 'Error shutting down background services');
+
     }
 
     try {
@@ -581,6 +617,8 @@ const gracefulShutdown = async (signal) => {
       app.log.warn({ err: qErr }, 'Error closing verification queue');
     }
 
+    await pool.end();
+    await flushSentry(2000);
     clearTimeout(forceShutdown);
     app.log.info('Cleanup completed. Exiting now.');
 
