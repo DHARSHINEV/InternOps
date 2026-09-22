@@ -418,9 +418,10 @@ app.setErrorHandler((error, request, reply) => {
       'Validation error'
     );
 
-    const validationDetails = normalizeValidationDetails(error.issues || []);
 
-    const validationDetails = normalizeValidationDetails(error.validation);
+    const validationDetails = normalizeValidationDetails(
+      error.validation || error.issues || []
+    );
 
     const payload = validationPayload(validationDetails, request.id);
     return reply.status(400).send(payload);
@@ -444,8 +445,8 @@ app.setErrorHandler((error, request, reply) => {
 
     const validationDetails = normalizeValidationDetails(error.issues || []);
 
-    const validationDetails = normalizeValidationDetails(error.issues || []);
 
+    const validationDetails = normalizeValidationDetails(error.issues || []);
     const payload = validationPayload(validationDetails, request.id);
     return reply.status(400).send(payload);
   }
