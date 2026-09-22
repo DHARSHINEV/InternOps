@@ -418,7 +418,6 @@ app.setErrorHandler((error, request, reply) => {
       'Validation error'
     );
 
-
     const validationDetails = normalizeValidationDetails(
       error.validation || error.issues || []
     );
@@ -444,7 +443,6 @@ app.setErrorHandler((error, request, reply) => {
     );
 
     const validationDetails = normalizeValidationDetails(error.issues || []);
-
 
     const validationDetails = normalizeValidationDetails(error.issues || []);
     const payload = validationPayload(validationDetails, request.id);
